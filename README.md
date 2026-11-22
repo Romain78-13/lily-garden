@@ -1,7 +1,13 @@
 # Lily Garden
 
 Une scène de lys (*Lilium*) roses et blancs en pixel art, de nuit, bercée par une brise légère.
-Pas de menu, pas de bouton, pas de texte : juste le jardin.
+Pas de menu, pas de bouton, pas de texte : juste le jardin, et une petite berceuse.
+
+## La musique
+
+Une valse originale façon boîte à musique (16 mesures en fa majeur qui bouclent), générée en direct par le navigateur avec Web Audio : aucun fichier son. Un carillon montant accompagne l'éclatement de chaque salve de cœurs.
+
+Les navigateurs, et l'iPhone en particulier, n'autorisent le son qu'après un geste : **un toucher sur l'écran lance la musique** (en fondu), un autre la coupe. Tant que le son est coupé, une petite note de musique rose respire en haut à gauche. Sur iPhone, la musique joue même avec le bouton silencieux activé (iOS 17 et plus) ; il faut simplement que le volume soit monté.
 
 ## Lancer la scène
 
@@ -56,6 +62,7 @@ Tout est dans `main.js`, en JavaScript vanilla, sans dépendance.
 | `HeartFirework` | Feux d'artifice : à chaque salve, trois fusées roses montent de derrière les lys et éclatent en cœurs d'étincelles (un grand au centre, deux plus petits sur les côtés), qui retombent et s'éteignent doucement. Une salve dès l'ouverture (les cœurs sont ouverts après environ 2,5 s), puis toutes les 16 secondes. La taille et la position des cœurs se règlent dans `Scene`. |
 | `Peony`, `buildBouquet`, `BouquetVision` | Après les retombées de chaque salve, un bouquet rose et blanc apparaît au centre : lys roses et blancs avec leurs boutons, pivoines roses et blanches, verdure, gypsophile, papier rose et blanc, nœud de ruban rose. Il éclot pixel par pixel du centre vers les bords dans une lueur rose, flotte et scintille environ 5 secondes, puis se dissout avant la salve suivante. Sa taille se règle avec `K` dans `buildBouquet`. |
 | `Motes`, `PetalSystem`, `FloatingHearts` | Lucioles dorées-rosées, pétales roses et blancs qui se détachent (9 par boucle), petits cœurs qui s'élèvent des fleurs (3 par boucle). |
+| `Lullaby` | La berceuse : planification des notes en avance sur l'horloge audio, clochettes (partiels légèrement inharmoniques), arpèges, basse, réverbération par convolution. Mise en pause avec l'onglet. |
 | `RotatePrompt` | Invitation sans texte à tourner le téléphone : petit téléphone qui pivote, flèche, cœur battant. |
 | `Scene`, `App` | Composition, mise à l'échelle nette, boucle d'animation, détection du téléphone et de l'orientation. |
 
@@ -83,5 +90,6 @@ Tout se règle en haut de `main.js` :
 - `CONFIG.heartsPerLoop` : plus ou moins de petits cœurs (0 pour les retirer).
 - `CONFIG.fireworkTimes` : les instants (en secondes, entre 0 et 48) où le cœur est lancé, par défaut `[0.5, 16.5, 32.5]` ; `[0.5]` pour une seule salve par boucle, `[]` pour les retirer.
 - `CONFIG.loop` : la durée de la boucle.
+- `MUSIC` : tempo (`bpm`), volume, accords et mélodie de la berceuse (notes MIDI et durées en temps).
 - `PALETTE` : toutes les couleurs (lys `stargazer`, `white`, `blush`, feuillage, ciel, bouquet…).
 - `TEMPLATES` : la forme des massifs de lys (hauteur des tiges, taille `R` et ouverture `open` des fleurs, boutons).

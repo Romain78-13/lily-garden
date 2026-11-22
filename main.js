@@ -1486,6 +1486,188 @@
   }
 
   // ===================================================================
+  // Berceuse « boîte à musique » (Web Audio, aucun fichier son)
+  // ===================================================================
+  /*
+   * Une petite valse originale en fa majeur, 16 mesures qui bouclent :
+   * mélodie en clochettes de boîte à musique, arpèges doux, basse ronde,
+   * le tout dans une réverbération légère. Un carillon montant accompagne
+   * l'éclatement de chaque salve de cœurs.
+   *
+   * Les navigateurs (et surtout l'iPhone) n'autorisent le son qu'après un
+   * geste : le premier toucher lance la musique, les suivants la coupent ou
+   * la relancent.
+   */
+  const MUSIC = {
+    bpm: 84,
+    volume: 0.5,
+    // accords par mesure : basse + triade de l'arpège (notes MIDI)
+    chords: {
+      F: { bass: 53, triad: [65, 69, 72] }, Dm: { bass: 50, triad: [62, 65, 69] },
+      Bb: { bass: 46, triad: [58, 62, 65] }, C: { bass: 48, triad: [60, 64, 67] },
+      Am: { bass: 45, triad: [57, 60, 64] },
+    },
+    progression: ['F', 'Dm', 'Bb', 'C', 'F', 'Am', 'C', 'F', 'F', 'Dm', 'Bb', 'C', 'Dm', 'Bb', 'C', 'F'],
+    // mélodie par mesure : [note MIDI, durée en temps] (3 temps par mesure)
+    melody: [
+      [[81, 1], [79, 0.5], [77, 0.5], [72, 1]], [[74, 1.5], [76, 0.5], [77, 1]],
+      [[74, 1], [77, 1], [82, 1]], [[81, 2], [79, 1]],
+      [[81, 1], [84, 1], [81, 1]], [[79, 1.5], [77, 0.5], [76, 1]],
+      [[77, 1], [74, 1], [76, 1]], [[77, 3]],
+      [[81, 1], [79, 0.5], [77, 0.5], [72, 1]], [[74, 1.5], [76, 0.5], [77, 1]],
+      [[74, 1], [77, 1], [82, 1]], [[81, 2], [79, 1]],
+      [[77, 1], [76, 0.5], [74, 0.5], [69, 1]], [[70, 1], [74, 1], [77, 1]],
+      [[79, 1.5], [81, 0.5], [79, 1]], [[77, 3]],
+    ],
+  };
+
+  class Lullaby {
+    constructor() {
+      this.ctx = null;
+      this.on = false;
+    }
+
+    /** À appeler depuis un geste (toucher, clic). */
+    start() {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        // iOS : jouer même quand le bouton silencieux est activé
+        try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* ignoré */ }
+        const ctx = (this.ctx = new AC());
+        this.master = ctx.createGain();
+        this.master.gain.value = 0;
+        this.master.connect(ctx.destination);
+        // réverbération : bruit qui décroît, 2,6 s
+        const verb = ctx.createConvolver();
+        const len = Math.round(ctx.sampleRate * 2.6);
+        const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+        const rng = new Rng(CONFIG.seed + 88);
+        for (let ch = 0; ch < 2; ch++) {
+          const d = ir.getChannelData(ch);
+          for (let i = 0; i < len; i++) d[i] = (rng.next() * 2 - 1) * Math.pow(1 - i / len, 3);
+        }
+        verb.buffer = ir;
+        const wet = ctx.createGain();
+        wet.gain.value = 0.32;
+        verb.connect(wet).connect(this.master);
+        this.bus = ctx.createGain();
+        this.bus.connect(this.master);
+        this.bus.connect(verb);
+        // déblocage iOS : un son vide joué pendant le geste
+        const silent = ctx.createBufferSource();
+        silent.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+        silent.connect(ctx.destination);
+        silent.start(0);
+        this.beat = 60 / MUSIC.bpm;
+        this.bar = 0;
+        this.nextBar = ctx.currentTime + 0.2;
+        this.timer = setInterval(() => this.schedule(), 60);
+      }
+      if (this.ctx.state !== 'running') this.ctx.resume();
+      this.on = true;
+      this.fade(MUSIC.volume, 2.5);
+    }
+
+    stop() {
+      this.on = false;
+      this.fade(0, 0.8);
+    }
+
+    toggle() { if (this.on) this.stop(); else this.start(); }
+
+    /** Onglet masqué : on suspend tout, puis on reprend si la musique jouait. */
+    setVisible(visible) {
+      if (!this.ctx) return;
+      if (!visible) this.ctx.suspend();
+      else if (this.on) this.ctx.resume();
+    }
+
+    fade(to, sec) {
+      if (!this.ctx) return;
+      const g = this.master.gain, t = this.ctx.currentTime;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(g.value, t);
+      g.linearRampToValueAtTime(to, t + sec);
+    }
+
+    schedule() {
+      const ctx = this.ctx;
+      if (!ctx || ctx.state !== 'running') return;
+      if (this.nextBar < ctx.currentTime) this.nextBar = ctx.currentTime + 0.05;  // après une pause
+      while (this.nextBar < ctx.currentTime + 0.5) {
+        this.playBar(this.bar % MUSIC.progression.length, this.nextBar);
+        this.nextBar += this.beat * 3;
+        this.bar++;
+      }
+    }
+
+    playBar(i, t0) {
+      const b = this.beat;
+      const ch = MUSIC.chords[MUSIC.progression[i]];
+      // basse ronde, tenue toute la mesure
+      this.note(ch.bass, t0, b * 3.2, 0.07, 'sine', 0.25);
+      // arpège de croches : fondamentale, quinte, tierce, quinte, octave, quinte
+      const tri = ch.triad;
+      [tri[0], tri[2], tri[1], tri[2], tri[0] + 12, tri[2]].forEach((n, k) => {
+        this.note(n, t0 + (k * b) / 2, 1.1, 0.035, 'triangle', 0.004);
+      });
+      // mélodie en clochettes
+      let t = t0;
+      for (const [n, d] of MUSIC.melody[i]) {
+        this.bell(n, t, Math.max(1.4, d * b + 0.8), 0.12);
+        t += d * b;
+      }
+    }
+
+    /** Clochette de boîte à musique : fondamentale + partiels légèrement inharmoniques. */
+    bell(midi, t, dur, gain) {
+      const f = 440 * Math.pow(2, (midi - 69) / 12);
+      for (const [mult, g] of [[1, 1], [2.0, 0.28], [3.01, 0.12], [4.2, 0.05]]) {
+        this.tone(f * mult, t, dur / Math.sqrt(mult), gain * g, 'sine', 0.004);
+      }
+    }
+
+    note(midi, t, dur, gain, type, attack) {
+      this.tone(440 * Math.pow(2, (midi - 69) / 12), t, dur, gain, type, attack);
+    }
+
+    tone(freq, t, dur, gain, type, attack) {
+      const ctx = this.ctx;
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type;
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(gain, t + attack + 0.001);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(this.bus);
+      o.start(t);
+      o.stop(t + dur + 0.05);
+    }
+
+    /** Carillon montant quand les cœurs éclatent. */
+    chime() {
+      if (!this.ctx || !this.on || this.ctx.state !== 'running') return;
+      const t = this.ctx.currentTime + 0.02;
+      [89, 93, 96, 101, 105].forEach((n, k) => this.bell(n, t + k * 0.07, 1.6, 0.045));
+    }
+  }
+
+  // Petite note de musique en pixel art (son coupé)
+  const NOTE_MASK = [
+    '....XX..',
+    '....X.X.',
+    '....X..X',
+    '....X...',
+    '....X...',
+    '....X...',
+    '.XXXX...',
+    'XXXXX...',
+    'XXXX....',
+    '.XX.....',
+  ];
+
+  // ===================================================================
   // Invitation à tourner le téléphone (sans texte)
   // ===================================================================
   /*
@@ -1577,6 +1759,8 @@
       this.prompting = false;
       this.dismissed = false;
       this.promptTime = 0;
+      this.music = new Lullaby();
+      this.noteRgb = hexRgb('#ffc4dc');
 
       this.resize();
       let pending = 0;
@@ -1586,10 +1770,16 @@
       window.addEventListener('orientationchange', () => { onResize(); setTimeout(() => this.resize(), 450); });
       if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
       // un toucher permet de rester en portrait
+      // un toucher : lance la musique (ou la coupe / la relance) ; à la verticale,
+      // il permet aussi de rester en portrait
       canvas.addEventListener('pointerup', () => {
-        if (!this.prompting) return;
-        this.dismissed = true;
-        this.updatePrompt();
+        if (this.prompting) {
+          this.dismissed = true;
+          this.updatePrompt();
+          this.music.start();
+        } else {
+          this.music.toggle();
+        }
         this.render();
       });
       // pas de zoom ni de rebond sur iOS
@@ -1597,7 +1787,10 @@
       document.addEventListener('gesturestart', block);
       document.addEventListener('touchmove', block, { passive: false });
       document.addEventListener('dblclick', block);
-      document.addEventListener('visibilitychange', () => this.updateRunning());
+      document.addEventListener('visibilitychange', () => {
+        this.music.setVisible(!document.hidden);
+        this.updateRunning();
+      });
       if (this.reduced) {
         const cb = () => this.updateRunning();
         if (this.reduced.addEventListener) this.reduced.addEventListener('change', cb);
@@ -1659,6 +1852,13 @@
       if (this.prompting) {
         this.frame.dim(0.42);
         this.prompt.draw(this.frame, this.isReduced() ? 1.2 : this.promptTime);
+      } else if (!this.music.on) {
+        // son coupé : petite note qui respire en haut à gauche (un toucher lance la musique)
+        const a = 0.35 + 0.3 * Math.sin(performance.now() / 600);
+        const x0 = 6, y0 = 6;
+        for (let r = 0; r < NOTE_MASK.length; r++) {
+          for (let c = 0; c < 8; c++) if (NOTE_MASK[r][c] === 'X') this.frame.blend(x0 + c, y0 + r, this.noteRgb, a);
+        }
       }
       this.bctx.putImageData(this.image, 0, 0);
       this.ctx.imageSmoothingEnabled = false;
@@ -1687,7 +1887,16 @@
       // très grands sauts sont écrêtés, l'onglet masqué étant déjà en pause
       const dt = Math.min(0.5, Math.max(0, (now - this.last) / 1000));
       if (this.prompting) this.promptTime += dt;
-      else this.time += dt;
+      else {
+        // carillon au moment où les cœurs éclatent
+        const prev = this.time % T;
+        this.time += dt;
+        const cur = this.time % T;
+        for (const start of CONFIG.fireworkTimes) {
+          const burst = (start + 1.2) % T;
+          if ((prev < burst && cur >= burst) || (cur < prev && (burst > prev || burst <= cur))) this.music.chime();
+        }
+      }
       this.last = now;
       if (this.lowPower && now - this.lastRender < 30) return;
       this.lastRender = now;
