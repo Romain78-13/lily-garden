@@ -1,0 +1,12 @@
+{
+  "name": "Lily Garden",
+  "short_name": "Lily Garden",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#141426",
+  "theme_color": "#141426",
+  "icons": [
+    { "src": "icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
